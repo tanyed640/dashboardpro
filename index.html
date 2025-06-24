@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RentalBoost AI – Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 text-gray-800">
+  <header class="bg-white shadow p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold">RentalBoost AI – Dashboard</h1>
+  </header>
+
+  <main class="max-w-3xl mx-auto py-8 px-6">
+    <h2 class="text-2xl font-semibold mb-4">Get Your Smart Rent Estimate</h2>
+    <form id="estimateForm" class="space-y-4">
+      <div>
+        <label class="block font-medium">ZIP Code</label>
+        <input type="text" id="zip" required class="w-full px-4 py-2 border rounded" placeholder="e.g., 90210" />
+      </div>
+      <div>
+        <label class="block font-medium">Bedrooms</label>
+        <select id="bedrooms" required class="w-full px-4 py-2 border rounded">
+          <option value="1">1 Bedroom</option>
+          <option value="2">2 Bedrooms</option>
+          <option value="3">3 Bedrooms</option>
+        </select>
+      </div>
+      <button type="submit" class="bg-blue-600 text-white py-2 px-6 rounded hover:bg-blue-700">Estimate Rent</button>
+    </form>
+
+    <section id="results" class="mt-10 hidden">
+      <h3 class="text-xl font-semibold mb-2">Your Smart Rent Estimate</h3>
+      <p id="rentEstimate" class="text-lg text-green-600 font-bold"></p>
+      <p id="priceRange" class="text-sm text-gray-700"></p>
+      <p id="summary" class="mt-2 text-sm"></p>
+      <canvas id="trendChart" class="mt-6"></canvas>
+      <div class="mt-4 flex gap-4">
+        <button onclick="downloadPDF()" class="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-900">Download PDF</button>
+        <button onclick="saveProperty()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Save Property</button>
+      </div>
+    </section>
+
+    <hr class="my-10" />
+    <section class="space-y-4">
+      <h3 class="text-xl font-semibold">Saved Properties</h3>
+      <ul id="propertyList" class="space-y-2"></ul>
+    </section>
+  </main>
+
+  <script>
+    const mockData = {
+      '90210': {1: 2200, 2: 2900, 3: 3600, trend: [2500,2600,2700,2800,2900,2950,2850,2750,2650,2600,2550,2500]},
+      '10001': {1: 1800, 2: 2400, 3: 3000, trend: [1800,1850,1900,1950,2000,2050,2100,2150,2100,2050,2000,1950]},
+      '60614': {1: 1500, 2: 1950, 3: 2400, trend: [1600,1650,1700,1800,1850,1800,1750,1700,1650,1600,1580,1550]}
+    };
+
+    let currentZip = '', currentBedrooms = 1, currentEstimate = 0, currentRange = [];
+
+    document.getElementById('estimateForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const zip = document.getElementById('zip').value;
+      const bedrooms = parseInt(document.getElementById('bedrooms').value);
+      const entry = mockData[zip];
+
+      if (!entry || !entry[bedrooms]) {
+        alert("No data for this ZIP or bedroom count.");
+        return;
+      }
+
+      const estimate = entry[bedrooms];
+      const trend = entry.trend;
+      const range = [Math.round(estimate * 0.9), estimate, Math.round(estimate * 1.1)];
+
+      currentZip = zip;
+      currentBedrooms = bedrooms;
+      currentEstimate = estimate;
+      currentRange = range;
+
+      document.getElementById('results').classList.remove('hidden');
+      document.getElementById('rentEstimate').textContent = `$${estimate}/month`;
+      document.getElementById('priceRange').textContent = `Typical range: $${range[0]}–$${range[2]}`;
+      document.getElementById('summary').textContent = `Based on ZIP ${zip}, our system suggests $${estimate}/month for a ${bedrooms}-bedroom unit. Market trends indicate moderate fluctuation.`;
+
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      if (window.trendChart) window.trendChart.destroy();
+      window.trendChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+          datasets: [{ label: 'Rent Trend', data: trend, borderColor: 'rgb(75, 192, 192)', tension: 0.3, fill: false }]
+        },
+        options: {
+          plugins: { legend: { display: false } }
+        }
+      });
+    });
+
+    function downloadPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const summaryText = `RentalBoost AI Report\n\nZIP Code: ${currentZip}\nBedrooms: ${currentBedrooms}\nEstimated Rent: $${currentEstimate}/mo\nRange: $${currentRange[0]}–$${currentRange[2]}\n\nThis value is based on local market averages and trends for similar listings.`;
+      doc.setFontSize(14);
+      doc.text(summaryText, 20, 30);
+      doc.save(`RentComp_${currentZip}_${currentBedrooms}BR.pdf`);
+    }
+
+    // Save properties to localStorage
+    const saved = JSON.parse(localStorage.getItem('savedProperties')) || [];
+    const propertyList = document.getElementById('propertyList');
+
+    function saveProperty() {
+      if (!currentZip || !currentBedrooms) return;
+      saved.push({ zip: currentZip, bedrooms: currentBedrooms });
+      localStorage.setItem('savedProperties', JSON.stringify(saved));
+      displayProperties();
+    }
+
+    function deleteProperty(index) {
+      saved.splice(index, 1);
+      localStorage.setItem('savedProperties', JSON.stringify(saved));
+      displayProperties();
+    }
+
+    function displayProperties() {
+      propertyList.innerHTML = '';
+      saved.forEach((property, index) => {
+        const li = document.createElement('li');
+        li.className = 'border px-4 py-2 flex justify-between items-center rounded';
+        li.innerHTML = `<span><strong>ZIP:</strong> ${property.zip}, <strong>${property.bedrooms}BR</strong></span>
+          <button onclick="deleteProperty(${index})" class="text-red-500 hover:underline text-sm">Delete</button>`;
+        propertyList.appendChild(li);
+      });
+    }
+
+    displayProperties();
+  </script>
+</body>
+</html>
